@@ -34,7 +34,7 @@ fn main() {
                 }
             }
         }
-        "set" => match write_key_val(file_folder, &args[2], &args[3]) {
+        "set" => match write_key_val(file_folder, &args[2], &args[3].as_bytes()) {
             Ok(bytes) => info!("success: wrote {bytes} bytes"),
             Err(e) => {
                 error!("syscall error {e}");
