@@ -11,14 +11,12 @@ fn derive_filepath(folder: String, name: &str) -> String {
     String::from(format!("/{}/{}.coat-check", folder, name))
 }
 
-fn read_key(folder: String, key: &str) -> Result<String, Errno> {
+fn read_key(folder: String, key: &str, buffer: &mut [u8]) -> Result<usize, Errno> {
     let filepath = derive_filepath(folder, key);
-    let buffer: &mut [u8] = &mut [0; 256];
     let fd: OwnedFd = open(filepath.as_str(), OFlag::O_RDONLY, Mode::empty())?;
-    let _ = read(&fd, buffer)?;
-    let data = String::from(from_utf8(buffer).unwrap());
+    let nbytes = read(&fd, buffer)?;
     close(fd)?;
-    Ok(data)
+    Ok(nbytes)
 }
 
 fn write_key_val(folder: String, key: &str, val: &str) -> Result<usize, Errno> {
@@ -52,13 +50,23 @@ fn main() {
 
     let action = &args[1]; // "get" or "set"
     match action.as_str() {
-        "get" => match read_key(file_folder, &args[2]) {
-            Ok(data) => info!("success: {data}"),
-            Err(e) => {
-                error!("syscall error {e}");
-                std::process::exit(-1);
+        "get" => {
+            // TODO: size the read buffer according to the value size like this, once can get it from the serialize struct (upcoming logic change)
+            //let buf_size = &args[2].chars().count();
+            //let buffer: &mut [u8] = &mut vec![0; *buf_size];
+            // in the meantime, an arbitrary 256 size is ok
+            let buffer: &mut [u8] = &mut [0; 256];
+            match read_key(file_folder, &args[2], buffer) {
+                Ok(bytes) => info!(
+                    "success: wrote {bytes} bytes: {:?}",
+                    from_utf8(buffer).unwrap()
+                ),
+                Err(e) => {
+                    error!("syscall error {e}");
+                    std::process::exit(-1);
+                }
             }
-        },
+        }
         "set" => match write_key_val(file_folder, &args[2], &args[3]) {
             Ok(bytes) => info!("success: wrote {bytes} bytes"),
             Err(e) => {
