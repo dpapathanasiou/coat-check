@@ -7,12 +7,12 @@ use std::env;
 use std::os::unix::io::OwnedFd;
 use std::str::from_utf8;
 
-fn derive_filepath(name: &str) -> String {
-    String::from(format!("/tmp/{}.coat-check", name))
+fn derive_filepath(folder: String, name: &str) -> String {
+    String::from(format!("/{}/{}.coat-check", folder, name))
 }
 
-fn read_key(key: &str) -> Result<String, Errno> {
-    let filepath = derive_filepath(key);
+fn read_key(folder: String, key: &str) -> Result<String, Errno> {
+    let filepath = derive_filepath(folder, key);
     let buffer: &mut [u8] = &mut [0; 256];
     let fd: OwnedFd = open(filepath.as_str(), OFlag::O_RDONLY, Mode::empty())?;
     let _ = read(&fd, buffer)?;
@@ -21,8 +21,8 @@ fn read_key(key: &str) -> Result<String, Errno> {
     Ok(data)
 }
 
-fn write_key_val(key: &str, val: &str) -> Result<usize, Errno> {
-    let filepath = derive_filepath(key);
+fn write_key_val(folder: String, key: &str, val: &str) -> Result<usize, Errno> {
+    let filepath = derive_filepath(folder, key);
     let fd: OwnedFd = open(
         filepath.as_str(),
         OFlag::O_WRONLY | OFlag::O_CREAT,
@@ -40,6 +40,8 @@ fn write_key_val(key: &str, val: &str) -> Result<usize, Errno> {
 
 fn main() {
     env_logger::init();
+    let file_folder =
+        std::env::var("COAT_CHECK_FILE_PATH").expect("env var 'COAT_CHECK_FILE_PATH' not defined");
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
@@ -50,14 +52,14 @@ fn main() {
 
     let action = &args[1]; // "get" or "set"
     match action.as_str() {
-        "get" => match read_key(&args[2]) {
+        "get" => match read_key(file_folder, &args[2]) {
             Ok(data) => info!("success: {data}"),
             Err(e) => {
                 error!("syscall error {e}");
                 std::process::exit(-1);
             }
         },
-        "set" => match write_key_val(&args[2], &args[3]) {
+        "set" => match write_key_val(file_folder, &args[2], &args[3]) {
             Ok(bytes) => info!("success: wrote {bytes} bytes"),
             Err(e) => {
                 error!("syscall error {e}");
