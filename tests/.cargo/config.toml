@@ -1,0 +1,4 @@
+[env]
+RUST_BACKTRACE = "1"
+RUST_LOG = "error"
+COAT_CHECK_FILE_PATH = "/tmp/test.coat-check"
