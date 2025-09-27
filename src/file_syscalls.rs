@@ -1,12 +1,16 @@
 use crate::hasher;
 use nix::errno::Errno;
-use nix::fcntl::{OFlag, open};
+use nix::fcntl::{Flock, FlockArg, OFlag, open};
 use nix::sys::stat::Mode;
-use nix::unistd::{Whence, close, lseek, read, write};
-use std::os::unix::io::OwnedFd;
+use nix::unistd::{Whence, lseek, read, write};
+use std::os::fd::{AsFd, OwnedFd};
 
 pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
     let fd: OwnedFd = open(filepath.as_str(), OFlag::O_RDONLY, Mode::empty())?;
+    let lock = match Flock::lock(fd, FlockArg::LockShared) {
+        Ok(locked) => locked,
+        Err((_, e)) => return Err(e),
+    };
 
     const SPACER: usize = std::mem::size_of::<usize>();
     let size_buf: &mut [u8] = &mut vec![0; SPACER];
@@ -16,29 +20,30 @@ pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
     let key_buf: &mut [u8] = &mut vec![0; hash.len()];
 
     // iterate through the `[(hashed) key][size of value][value]` byte arrays in file
-    let mut nbytes = read(&fd, key_buf)?;
+    let mut nbytes = read(lock.as_fd(), key_buf)?;
     while nbytes > 0 {
         if hash != str::from_utf8(key_buf).unwrap() {
             // no match at the current key position,
             // so read the value size, and skip ahead
             // to the next key/value array
-            _ = read(&fd, size_buf)?;
+            _ = read(lock.as_fd(), size_buf)?;
             sizer.clone_from_slice(size_buf);
-            lseek(&fd, i64::from_ne_bytes(sizer), Whence::SeekCur)?;
-            nbytes = read(&fd, key_buf)?;
+            lseek(lock.as_fd(), i64::from_ne_bytes(sizer), Whence::SeekCur)?;
+            nbytes = read(lock.as_fd(), key_buf)?;
         } else {
             // matched, so get the value size, to read and return the value bytes
-            _ = read(&fd, size_buf)?;
+            _ = read(lock.as_fd(), size_buf)?;
             sizer.clone_from_slice(size_buf);
             let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
-            _ = read(&fd, val_buf)?;
+            _ = read(lock.as_fd(), val_buf)?;
             let mut result = Vec::new();
             result.extend_from_slice(val_buf);
+            drop(lock);
             return Ok(Some(result));
         }
     }
 
-    close(fd)?;
+    drop(lock);
     Ok(None)
 }
 
@@ -53,6 +58,10 @@ fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, E
             | Mode::S_IROTH
             | Mode::S_IWOTH,
     )?;
+    let lock = match Flock::lock(fd, FlockArg::LockExclusive) {
+        Ok(locked) => locked,
+        Err((_, e)) => return Err(e),
+    };
 
     // produce a `[(hashed) key][size of value][value]` byte array, given the key and value data
     let hash = hasher::hash_key(key);
@@ -65,8 +74,8 @@ fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, E
     buffer[hash_size..hash_size + sizer_size].copy_from_slice(&sizer);
     buffer[hash_size + sizer_size..].copy_from_slice(val);
 
-    let nbytes = write(&fd, buffer)?;
-    close(fd)?;
+    let nbytes = write(lock.as_fd(), buffer)?;
+    drop(lock);
     Ok(nbytes)
 }
 
