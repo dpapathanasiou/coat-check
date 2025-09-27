@@ -1,6 +1,8 @@
 use chrono::Utc;
 use coat_check::file_syscalls::{read_key, write_key_val};
 use nix::errno::Errno;
+use std::thread;
+use std::time::Duration;
 
 fn generate_test_file(n: i32) -> String {
     format!(
@@ -66,5 +68,66 @@ fn duplicate_key_writes_do_not_upsert() {
             None => assert!(false),
         },
         Err(_) => assert!(false),
+    }
+}
+
+#[test]
+fn lock_on_writes_blocks_reads_without_errors() {
+    let file_folder = generate_test_file(3);
+
+    let keys = vec![
+        "α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "ο", "π", "ρ", "σ",
+        "τ", "υ", "φ", "χ", "ψ", "ω",
+    ];
+    let vals = vec![
+        "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta", "Iota", "Kappa",
+        "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi", "Rho", "Sigma", "Tau", "Upsilon", "Phi",
+        "Chi", "Psi", "Omega",
+    ];
+
+    // write the first key-value pair to the file so that all the subsequent reads in the main thread work
+    let first_write_result = write_key_val(
+        file_folder.clone(),
+        keys.get(0).unwrap(),
+        vals.get(0).unwrap().as_bytes(),
+    );
+    assert!(first_write_result.is_ok());
+
+    // prepare for the remaining key-value writes as spawned threads
+    let f = file_folder.clone();
+    let k = keys.clone();
+    let v = vals.clone();
+    let cases = keys.len();
+
+    thread::spawn(move || {
+        for i in 1..cases {
+            match write_key_val(
+                file_folder.clone(),
+                k.get(i).unwrap(),
+                v.get(i).unwrap().as_bytes(),
+            ) {
+                Ok(bytes) => assert_ne!(bytes, 0), // as brand-new writes, these should all be > 0
+                Err(_) => assert!(false),
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    });
+
+    // main thread: make sure to confirm all the keys, waiting on the writer threads to finish and release their locks
+    for i in 0..cases {
+        let key = keys.get(i).unwrap();
+        let val = vals.get(i).unwrap().as_bytes();
+        let mut matched = false;
+        while !matched {
+            let read_result = read_key(f.clone(), key);
+            assert!(read_result.is_ok());
+            matched = match read_result {
+                Ok(bytes) => match bytes {
+                    Some(value_vector) => value_vector == val,
+                    None => false, // there may not be a match yet
+                },
+                Err(_) => false,
+            };
+        }
     }
 }
