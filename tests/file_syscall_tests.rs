@@ -39,3 +39,32 @@ fn write_then_read_key_works() {
         Err(_) => assert!(false),
     }
 }
+
+#[test]
+fn duplicate_key_writes_do_not_upsert() {
+    let file_folder = generate_test_file(2);
+
+    // write() to a non-existent file should succeed
+    let test_key = "the key";
+    let first_val = b"this is the first value for the key";
+    let first_write_result = write_key_val(file_folder.clone(), test_key, first_val);
+    assert!(first_write_result.is_ok());
+
+    let second_val = b"a different value for the same key";
+    let second_write_result = write_key_val(file_folder.clone(), test_key, second_val);
+    assert!(second_write_result.is_ok());
+    match second_write_result {
+        Ok(bytes) => assert_eq!(bytes, 0), // i.e., it did not write the new value
+        Err(_) => assert!(false),
+    }
+
+    // and reading back the just-written key should succeed and match
+    let read_result = read_key(file_folder.clone(), test_key);
+    match read_result {
+        Ok(bytes) => match bytes {
+            Some(value_vector) => assert_eq!(value_vector, first_val),
+            None => assert!(false),
+        },
+        Err(_) => assert!(false),
+    }
+}
