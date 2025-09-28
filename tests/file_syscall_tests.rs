@@ -93,7 +93,7 @@ fn lock_on_writes_blocks_reads_without_errors() {
     );
     assert!(first_write_result.is_ok());
 
-    // prepare for the remaining key-value writes as spawned threads
+    // prepare for the remaining key-value writes as spawned threads (borrow all these, b/c of the upcoming 'move')
     let f = file_folder.clone();
     let k = keys.clone();
     let v = vals.clone();
@@ -101,11 +101,7 @@ fn lock_on_writes_blocks_reads_without_errors() {
 
     thread::spawn(move || {
         for i in 1..cases {
-            match write_key_val(
-                file_folder.clone(),
-                k.get(i).unwrap(),
-                v.get(i).unwrap().as_bytes(),
-            ) {
+            match write_key_val(f.clone(), k.get(i).unwrap(), v.get(i).unwrap().as_bytes()) {
                 Ok(bytes) => assert_ne!(bytes, 0), // as brand-new writes, these should all be > 0
                 Err(_) => assert!(false),
             }
@@ -119,7 +115,7 @@ fn lock_on_writes_blocks_reads_without_errors() {
         let val = vals.get(i).unwrap().as_bytes();
         let mut matched = false;
         while !matched {
-            let read_result = read_key(f.clone(), key);
+            let read_result = read_key(file_folder.clone(), key);
             assert!(read_result.is_ok());
             matched = match read_result {
                 Ok(bytes) => match bytes {
