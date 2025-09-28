@@ -1,3 +1,4 @@
+use nix::libc;
 use nix::{
     sys::wait::{WaitStatus, waitpid},
     unistd::{ForkResult, execve, fork},
@@ -24,6 +25,7 @@ pub fn wc(file: String) {
             }
         }
         Ok(ForkResult::Child) => {
+            // Unsafe to use `println!` (or `unwrap`) here. See Safety.
             eprintln!("fork(wc): in child -> pid {}", nix::unistd::getpid());
 
             let path = CString::new("/usr/bin/wc").unwrap();
@@ -34,7 +36,7 @@ pub fn wc(file: String) {
             let env: &[&CStr] = &[];
 
             match execve(&path, args, env) {
-                Ok(_) => unreachable!(), // if successful, will never return
+                Ok(_) => unsafe { libc::_exit(0) }, // if successful, will never return, but call '_exit' regardless
                 Err(e) => {
                     eprintln!("fork(wc): in child ->Child process: error {:?}", e);
                     std::process::exit(1);
