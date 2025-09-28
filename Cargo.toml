@@ -6,7 +6,7 @@ authors = ["Denis Papathanasiou <denis@papathanasiou.org>"]
 license = "MIT"
 
 [dependencies]
-nix = { version = "0.30.1", features = ["fs"] }
+nix = { version = "0.30.1", features = ["fs", "process"] }
 log = "0.4.28"
 env_logger = "0.11.8"
 md-5 = "0.10.6"
