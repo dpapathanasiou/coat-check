@@ -47,4 +47,5 @@ pub fn wc(file: String) {
 
 pub fn size(file: String) {
     // syntactic sugar for the fork to wc
+    wc(file)
 }
