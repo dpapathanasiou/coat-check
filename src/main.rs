@@ -24,23 +24,23 @@ fn main() {
                 None => info!("no match found"),
             },
             Err(e) => {
-                error!("syscall error {e}");
-                std::process::exit(-1);
+                error!("syscall error {:#?}", e);
+                std::process::exit(1);
             }
         },
         "set" => match write_key_val(file_folder.clone(), &args[2], &args[3].as_bytes()) {
             Ok(bytes) => info!("success: wrote {bytes} bytes"),
             Err(e) => {
-                error!("syscall error {e}");
-                std::process::exit(-1);
+                error!("syscall error {:#?}", e);
+                std::process::exit(1);
             }
         },
         _ => {
             error!("error: invalid operation!");
-            std::process::exit(-1);
+            std::process::exit(1);
         }
     };
 
-    // take the size of the date file, as fork a call to `wc`
+    // take the size of the date file, as a fork call to `wc`
     size(f.clone())
 }
