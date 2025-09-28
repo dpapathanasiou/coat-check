@@ -7,7 +7,10 @@ fn main() {
     env_logger::init();
     let file_folder =
         std::env::var("COAT_CHECK_FILE_PATH").expect("env var 'COAT_CHECK_FILE_PATH' not defined");
+
+    // before: take the size of the date file, as a fork call to `wc`
     let f = file_folder.clone();
+    size(f.clone());
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
@@ -41,6 +44,6 @@ fn main() {
         }
     };
 
-    // take the size of the date file, as a fork call to `wc`
-    size(f.clone())
+    // after: take the size of the date file, as a fork call to `wc`
+    size(f.clone());
 }
