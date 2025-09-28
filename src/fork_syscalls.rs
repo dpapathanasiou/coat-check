@@ -36,10 +36,11 @@ pub fn wc(file: String) {
             let env: &[&CStr] = &[];
 
             match execve(&path, args, env) {
-                Ok(_) => unsafe { libc::_exit(0) }, // if successful, will never return, but call '_exit' regardless
+                Ok(_) => unreachable!(), // if successful, will never return
                 Err(e) => {
+                    // use '_exit', to cleanup whatever traces of child remain
                     eprintln!("fork(wc): in child ->Child process: error {:?}", e);
-                    std::process::exit(1);
+                    unsafe { libc::_exit(1) }
                 }
             };
         }
