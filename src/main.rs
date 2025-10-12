@@ -1,5 +1,6 @@
 use coat_check::file_syscalls::{read_key, write_key_val};
 use coat_check::fork_syscalls::size;
+use coat_check::server::start;
 use log::{error, info};
 use std::env;
 
@@ -13,9 +14,17 @@ fn main() {
     size(f.clone());
 
     let args: Vec<String> = env::args().collect();
-    if args.len() < 3 {
+    if args.len() == 2 && &args[1] == "server" {
+        match start(5000) {
+            Ok(_) => info!("ok"),
+            Err(e) => {
+                error!("syscall error {:#?}", e);
+                std::process::exit(1);
+            }
+        }
+    } else if args.len() < 3 {
         let prog = &args[0];
-        error!("Usage:\n\n{prog} (get|set) [key] [value (only with 'set')]");
+        error!("Usage:\n\n{prog} <server> | <(get|set) [key] [value (only with 'set')]>");
         std::process::exit(0);
     }
 
