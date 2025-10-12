@@ -66,7 +66,7 @@ $ cargo run server
 Server listening on 5000
 ```
 
-Clients use [telnet]() to interact with the server and data:
+Clients use [telnet](https://en.wikipedia.org/wiki/Telnet) to interact with the server and data:
 
 ```sh
 $ telnet localhost 5000
