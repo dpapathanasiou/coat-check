@@ -92,22 +92,28 @@ Connection closed.
 
 ## Test
 ```sh
-$ cargo test -- --no-capture
-   Compiling coat-check v0.1.0 (...)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.41s
-     Running unittests src/lib.rs (target/debug/deps/coat_check-da541ad98bad8f52)
+$ cargo test
+   Compiling coat-check v0.1.0 (/home/denis/repos/repos-git/coat-check)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.20s
+     Running unittests src/lib.rs (target/debug/deps/coat_check-d0433ddf8bcd52a9)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/main.rs (target/debug/deps/coat_check-49960524fe20ac81)
+     Running unittests src/main.rs (target/debug/deps/coat_check-e5512602a7a735ed)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/file_syscall_tests.rs (target/debug/deps/file_syscall_tests-fccbd6767bc74354)
+     Running tests/common.rs (target/debug/deps/common-747e04b5efe1f5b4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/file_syscall_tests.rs (target/debug/deps/file_syscall_tests-27fc31fa7f20d9b0)
 
 running 4 tests
 test first_read_key_fails ... ok
@@ -117,13 +123,23 @@ test lock_on_writes_blocks_reads_without_errors ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.11s
 
-     Running tests/hasher_test.rs (target/debug/deps/hasher_test-9d0fbf42de0cbf4c)
+     Running tests/hasher_test.rs (target/debug/deps/hasher_test-4267c0a303a982e7)
 
 running 2 tests
 test key_hashing_is_deterministic ... ok
 test key_hashing_is_case_sensitive ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/server_tests.rs (target/debug/deps/server_tests-9a988a8d33482924)
+
+running 4 tests
+test server_invalid_command_warning ... ok
+test server_write_then_read_key_works ... ok
+test server_duplicate_key_writes_do_not_upsert ... ok
+test server_unknown_key_no_match ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
    Doc-tests coat_check
 
