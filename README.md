@@ -32,23 +32,67 @@ While the data format meets the basic requirements, including the ability to acc
 This is a typical [Rust](https://www.rust-lang.org/) application, using [Cargo](https://doc.rust-lang.org/cargo/index.html), so all the [normal commands](https://doc.rust-lang.org/cargo/commands/index.html) work as expected:
 
 ## Run
-```sh
-cargo run
-   Compiling coat-check v0.1.0 (...)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.61s
-     Running `target/debug/coat-check`
-fork(wc): parent pid 23127 -> child pid 23274
-fork(wc): in child -> pid 23274
-105 /tmp/data.coat-check
-fork(wc): in parent -> child pid 23274 exited, status = 0
-[2025-09-28T15:35:10Z ERROR coat_check] Usage:
 
-    target/debug/coat-check (get|set) [key] [value (only with 'set')]
+### Transactional: 'get' or 'set' one at a time
+
+```sh
+$ cargo run set foo "this is the value for 'foo'"
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.15s
+    ...
+[2025-10-12T16:15:45Z INFO  coat_check] success: wrote 67 bytes
+fork(wc): parent pid 22898 -> child pid 22905
+fork(wc): in child -> pid 22905
+67 /tmp/data.coat-check
+fork(wc): in parent -> child pid 22905 exited, status = 0
+```
+
+```sh
+$ cargo run get foo
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+    ...
+[2025-10-12T16:15:54Z INFO  coat_check] success: matched -> Ok("this is the value for 'foo'")
+fork(wc): parent pid 22906 -> child pid 22913
+fork(wc): in child -> pid 22913
+67 /tmp/data.coat-check
+fork(wc): in parent -> child pid 22913 exited, status = 0
+```
+
+### Server Mode
+
+```sh
+$ cargo run server
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.15s
+    ...
+Server listening on 5000
+```
+
+Clients use [telnet]() to interact with the server and data:
+
+```sh
+$ telnet localhost 5000
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+get foo
+this is the value for 'foo'
+get bar
+*** no match found
+set bar 私は毎日勉強します。
+*** success: wrote 70 bytes
+get bar
+私は毎日勉強します。
+what?
+*** invalid command
+Usage:
+<get> <key> | <set> <key> <value>
+^]
+telnet> close
+Connection closed.
 ```
 
 ## Test
 ```sh
-cargo test -- --no-capture
+$ cargo test -- --no-capture
    Compiling coat-check v0.1.0 (...)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.41s
      Running unittests src/lib.rs (target/debug/deps/coat_check-da541ad98bad8f52)
