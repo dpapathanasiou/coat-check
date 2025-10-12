@@ -1,19 +1,13 @@
-use chrono::Utc;
 use coat_check::file_syscalls::{read_key, write_key_val};
 use nix::errno::Errno;
 use std::thread;
 use std::time::Duration;
 
-fn generate_test_file(n: i32) -> String {
-    format!(
-        "/tmp/test-{}-{n}.coat-check",
-        Utc::now().timestamp().to_string()
-    )
-}
+mod common;
 
 #[test]
 fn first_read_key_fails() {
-    let file_folder = generate_test_file(0);
+    let file_folder = common::generate_test_file(0);
 
     let result = read_key(file_folder, "meh");
     // file does not exist, so read() should fail
@@ -23,7 +17,7 @@ fn first_read_key_fails() {
 
 #[test]
 fn write_then_read_key_works() {
-    let file_folder = generate_test_file(1);
+    let file_folder = common::generate_test_file(1);
 
     // write() to a non-existent file should succeed
     let test_key = "boo";
@@ -44,7 +38,7 @@ fn write_then_read_key_works() {
 
 #[test]
 fn duplicate_key_writes_do_not_upsert() {
-    let file_folder = generate_test_file(2);
+    let file_folder = common::generate_test_file(2);
 
     // write() to a non-existent file should succeed
     let test_key = "the key";
@@ -73,7 +67,7 @@ fn duplicate_key_writes_do_not_upsert() {
 
 #[test]
 fn lock_on_writes_blocks_reads_without_errors() {
-    let file_folder = generate_test_file(3);
+    let file_folder = common::generate_test_file(3);
 
     let keys = vec![
         "α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "ο", "π", "ρ", "σ",
