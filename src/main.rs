@@ -1,6 +1,6 @@
 use coat_check::file_syscalls::{read_key, write_key_val};
 use coat_check::fork_syscalls::size;
-use coat_check::server::start;
+use coat_check::server::Server;
 use log::{error, info};
 use std::env;
 
@@ -15,8 +15,15 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     if args.len() == 2 && &args[1] == "server" {
-        match start(5000) {
-            Ok(_) => info!("ok"),
+        let server = Server {
+            port: 5000,
+            filepath: f.clone(),
+        };
+        match server.start() {
+            Ok(_) => {
+                info!("server mode");
+                std::process::exit(0)
+            }
             Err(e) => {
                 error!("syscall error {:#?}", e);
                 std::process::exit(1);
