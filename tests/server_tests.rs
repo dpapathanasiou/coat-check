@@ -1,7 +1,7 @@
 use coat_check::server::Server;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::thread;
+use std::{thread, time};
 
 mod common;
 
@@ -42,9 +42,12 @@ fn test_harness(n: i32, actions: Vec<String>, expectations: Vec<String>) {
         port: 5000 + n as u16,
         filepath: common::generate_test_file(n),
     };
-    server.start().unwrap();
+    let server_socket = server.start().unwrap();
 
     tests.join().unwrap();
+    thread::sleep(time::Duration::from_millis(10));
+
+    server.stop(server_socket).unwrap();
 }
 
 #[test]

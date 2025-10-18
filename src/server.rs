@@ -2,9 +2,10 @@ use crate::file_syscalls::{read_key, write_key_val};
 use libc::{c_void, pthread_create, pthread_detach, pthread_t};
 use nix::errno::Errno;
 use nix::sys::socket::{
-    AddressFamily, Backlog, MsgFlags, SockFlag, SockProtocol, SockType, SockaddrIn, accept, bind,
-    listen, recv, send, socket,
+    AddressFamily, Backlog, MsgFlags, Shutdown, SockFlag, SockProtocol, SockType, SockaddrIn,
+    accept, bind, listen, recv, send, shutdown, socket,
 };
+use nix::unistd::close;
 use std::os::fd::{AsRawFd, RawFd};
 use std::{mem, ptr};
 
@@ -15,8 +16,11 @@ struct ClientThreadArgs {
 }
 
 extern "C" fn handle_client(arg: *mut c_void) -> *mut c_void {
-    println!("Connected to client!");
     let args = unsafe { Box::from_raw(arg as *mut ClientThreadArgs) };
+    println!(
+        "Connected to client: {:#?} -> {:#?}",
+        args.clientfd, args.filepath
+    );
 
     let mut buf = [0u8; 1024];
     let read_err_msg = String::from("Failed to read from client");
@@ -103,6 +107,10 @@ extern "C" fn handle_client(arg: *mut c_void) -> *mut c_void {
         nbytes = recv(args.clientfd, &mut buf, MsgFlags::empty()).expect(&read_err_msg);
     }
 
+    println!(
+        "Disconnected from client: {:#?} -> {:#?}",
+        args.clientfd, args.filepath
+    );
     ptr::null_mut()
 }
 
@@ -113,7 +121,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn start(&self) -> Result<(), Errno> {
+    pub fn start(&self) -> Result<RawFd, Errno> {
         // Create the server socket
         let fd = socket(
             AddressFamily::Inet,
@@ -125,15 +133,22 @@ impl Server {
 
         // Bind the socket to the specified port (on localhost)
         let addr = SockaddrIn::new(127, 0, 0, 1, self.port);
-        bind(fd.as_raw_fd(), &addr)?;
+        bind(sockfd, &addr)?;
 
         // Listen for incoming connections
         listen(&fd, Backlog::MAXALLOWABLE)?;
-        println!("Server listening on {}", self.port);
+        println!("Server listening on {:#?} -> {:#?}", self.port, sockfd);
 
         // Accept and handle incoming connections
         self.handle(sockfd);
 
+        Ok(sockfd)
+    }
+
+    pub fn stop(&self, sockfd: RawFd) -> Result<(), Errno> {
+        println!("Server on {:#?} shutting down -> {:#?}", self.port, sockfd);
+        shutdown(sockfd, Shutdown::Both)?;
+        close(sockfd)?;
         Ok(())
     }
 
