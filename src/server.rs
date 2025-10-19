@@ -2,10 +2,9 @@ use crate::file_syscalls::{read_key, write_key_val};
 use libc::{c_void, pthread_create, pthread_detach, pthread_t};
 use nix::errno::Errno;
 use nix::sys::socket::{
-    AddressFamily, Backlog, MsgFlags, Shutdown, SockFlag, SockProtocol, SockType, SockaddrIn,
-    accept, bind, listen, recv, send, shutdown, socket,
+    AddressFamily, Backlog, MsgFlags, SockFlag, SockProtocol, SockType, SockaddrIn, accept, bind,
+    listen, recv, send, socket,
 };
-use nix::unistd::close;
 use std::os::fd::{AsRawFd, RawFd};
 use std::{mem, ptr};
 
@@ -142,13 +141,6 @@ impl Server {
         // Accept and handle incoming connections
         self.handle(sockfd);
 
-        Ok(())
-    }
-
-    pub fn stop(&self, sockfd: RawFd) -> Result<(), Errno> {
-        println!("Server on {:#?} shutting down -> {:#?}", self.port, sockfd);
-        shutdown(sockfd, Shutdown::Both)?;
-        close(sockfd)?;
         Ok(())
     }
 

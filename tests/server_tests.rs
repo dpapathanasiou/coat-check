@@ -1,50 +1,53 @@
 use coat_check::server::Server;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::thread;
+use std::{thread, time};
 
 mod common;
 
 fn test_harness(n: i32, actions: Vec<String>, expectations: Vec<String>) {
-    let tests = thread::spawn(move || {
-        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", 5000 + n)).unwrap();
-
-        let mut buf = [0u8; 1024];
-        let mut read_size: usize;
-        let mut l: usize;
-
-        for (act, exp) in actions.iter().zip(expectations.iter()) {
-            // write the action
-            l = act.len();
-            buf[0..l].copy_from_slice(act.as_bytes());
-            buf[l..l + 2].copy_from_slice(b"\r\n");
-            stream.write_all(&buf).unwrap();
-
-            // read the server reply
-            stream.read(&mut buf).unwrap();
-            read_size = buf
-                .clone()
-                .iter()
-                .take_while(|c| **c != b'\n' && **c != b'\r')
-                .count();
-            assert_eq!(str::from_utf8(&buf[0..read_size]).unwrap(), exp);
-        }
-
-        // send the telnet quit command, to exit the thread and close the server
-        buf.fill(0);
-        let quit = b"\x1D\r\nquit\r\n";
-        let q = quit.len();
-        buf[0..q].copy_from_slice(quit);
-        stream.write_all(&buf).unwrap();
-    });
-
     let server = Server {
         port: 5000 + n as u16,
         filepath: common::generate_test_file(n),
     };
-    server.start().unwrap();
+    // server start() never returns, so spin it up in the background
+    thread::spawn(move || {
+        server.start().unwrap();
+    });
 
-    tests.join().unwrap();
+    // pause long enough to have the server start accepting connections
+    thread::sleep(time::Duration::from_millis(100));
+
+    // run the tests as the client
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", 5000 + n)).unwrap();
+
+    let mut buf = [0u8; 1024];
+    let mut read_size: usize;
+    let mut l: usize;
+
+    for (act, exp) in actions.iter().zip(expectations.iter()) {
+        // write the action
+        l = act.len();
+        buf[0..l].copy_from_slice(act.as_bytes());
+        buf[l..l + 2].copy_from_slice(b"\r\n");
+        stream.write_all(&buf).unwrap();
+
+        // read the server reply
+        stream.read(&mut buf).unwrap();
+        read_size = buf
+            .clone()
+            .iter()
+            .take_while(|c| **c != b'\n' && **c != b'\r')
+            .count();
+        assert_eq!(str::from_utf8(&buf[0..read_size]).unwrap(), exp);
+    }
+
+    // send the telnet quit command
+    buf.fill(0);
+    let quit = b"\x1D\r\nquit\r\n";
+    let q = quit.len();
+    buf[0..q].copy_from_slice(quit);
+    stream.write_all(&buf).unwrap();
 }
 
 #[test]
