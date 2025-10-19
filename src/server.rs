@@ -121,7 +121,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn start(&self) -> Result<RawFd, Errno> {
+    pub fn start(&self) -> Result<(), Errno> {
         // Create the server socket
         let fd = socket(
             AddressFamily::Inet,
@@ -142,7 +142,7 @@ impl Server {
         // Accept and handle incoming connections
         self.handle(sockfd);
 
-        Ok(sockfd)
+        Ok(())
     }
 
     pub fn stop(&self, sockfd: RawFd) -> Result<(), Errno> {
@@ -152,7 +152,7 @@ impl Server {
         Ok(())
     }
 
-    pub fn handle(&self, sockfd: RawFd) {
+    fn handle(&self, sockfd: RawFd) {
         let mut connection = accept(sockfd);
         while connection.is_ok() {
             // Create a new pthread for each successful client connection
