@@ -1,8 +1,8 @@
 SHELL = /bin/sh
-SOURCES = $(shell echo *.dot)
-TARGETS = $(SOURCES:.dot=.png)
+SOURCES = $(shell echo *.gv)
+TARGETS = $(SOURCES:.gv=.png)
 
-%.png: %.dot
+%.png: %.gv
 	dot -T png -o $@ $^
 
 all: $(TARGETS)
