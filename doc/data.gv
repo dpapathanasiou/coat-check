@@ -3,6 +3,6 @@
 digraph data {
     node [shape=record];
     records [label="<f0>record|<f1>record|<f2>record|<f3> ... |<f4>\<EOF\>"];
-    struct [label="<f0>key\n(hashed, fixed length)|<f1>size of value\n(in bytes)|<f2>value\n(byte array, variable length)"];
+    struct [label="<f0>key\n(hashed, fixed length)|<f1>size of value\n(in bytes)|<f2>deleted?\n(boolean flag)|<f3>value\n(byte array, variable length)"];
     records:f0 -> struct:f1 [label="\n\l each record\lconsists of:"];
 }
