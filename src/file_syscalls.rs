@@ -18,8 +18,9 @@ pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
 
     let hash = hasher::hash_key(key);
     let key_buf: &mut [u8] = &mut vec![0; hash.len()];
+    let del_buf: &mut [u8] = &mut vec![0; 1];
 
-    // iterate through the `[(hashed) key][size of value][value]` byte arrays in file
+    // iterate through the `[(hashed) key][size of value][deleted?][value]` byte arrays in file
     let mut nbytes = read(lock.as_fd(), key_buf)?;
     while nbytes > 0 {
         if hash != str::from_utf8(key_buf).unwrap() {
@@ -28,18 +29,23 @@ pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
             // to the next key/value array
             _ = read(lock.as_fd(), size_buf)?;
             sizer.clone_from_slice(size_buf);
-            lseek(lock.as_fd(), i64::from_ne_bytes(sizer), Whence::SeekCur)?;
+            lseek(lock.as_fd(), i64::from_ne_bytes(sizer) + 1, Whence::SeekCur)?;
             nbytes = read(lock.as_fd(), key_buf)?;
         } else {
-            // matched, so get the value size, to read and return the value bytes
+            // matched, so get the value size, to read and return the value bytes, but only if not deleted
             _ = read(lock.as_fd(), size_buf)?;
             sizer.clone_from_slice(size_buf);
-            let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
-            _ = read(lock.as_fd(), val_buf)?;
-            let mut result = Vec::new();
-            result.extend_from_slice(val_buf);
-            drop(lock);
-            return Ok(Some(result));
+
+            _ = read(lock.as_fd(), del_buf)?;
+            if del_buf == [0] {
+                // not deleted, so return it as a match
+                let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
+                _ = read(lock.as_fd(), val_buf)?;
+                let mut result = Vec::new();
+                result.extend_from_slice(val_buf);
+                drop(lock);
+                return Ok(Some(result));
+            }
         }
     }
 
@@ -63,16 +69,19 @@ fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, E
         Err((_, e)) => return Err(e),
     };
 
-    // produce a `[(hashed) key][size of value][value]` byte array, given the key and value data
+    // produce a `[(hashed) key][size of value][deleted?][value]` byte array, given the key and value data
     let hash = hasher::hash_key(key);
     let hash_size = hash.len();
     let val_size = val.iter().count();
     let sizer: [u8; std::mem::size_of::<usize>()] = val_size.to_ne_bytes();
     let sizer_size = sizer.len();
-    let buffer: &mut [u8] = &mut vec![0; hash_size + sizer_size + val_size];
+    let deleted: [u8; 1] = [0];
+    let deleted_size = deleted.len();
+    let buffer: &mut [u8] = &mut vec![0; hash_size + sizer_size + deleted_size + val_size];
     buffer[0..hash_size].copy_from_slice(hash.as_bytes());
     buffer[hash_size..hash_size + sizer_size].copy_from_slice(&sizer);
-    buffer[hash_size + sizer_size..].copy_from_slice(val);
+    buffer[hash_size + sizer_size..hash_size + sizer_size + deleted_size].copy_from_slice(&deleted);
+    buffer[hash_size + sizer_size + deleted_size..].copy_from_slice(val);
 
     let nbytes = write(lock.as_fd(), buffer)?;
     drop(lock);

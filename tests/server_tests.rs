@@ -53,7 +53,7 @@ fn test_harness(n: i32, actions: Vec<String>, expectations: Vec<String>) {
 #[test]
 fn server_write_then_read_key_works() {
     let actions = ["set foo my value", "get foo"];
-    let expectations = ["*** success: wrote 48 bytes", "my value"];
+    let expectations = ["*** success: wrote 49 bytes", "my value"];
 
     test_harness(
         1,
@@ -66,7 +66,7 @@ fn server_write_then_read_key_works() {
 fn server_duplicate_key_writes_do_not_upsert() {
     let actions = ["set foo my value", "set foo 한국어 키보드", "get foo"];
     let expectations = [
-        "*** success: wrote 48 bytes",
+        "*** success: wrote 49 bytes",
         "*** success: wrote 0 bytes",
         "my value",
     ];
@@ -81,7 +81,7 @@ fn server_duplicate_key_writes_do_not_upsert() {
 #[test]
 fn server_unknown_key_no_match() {
     let actions = ["set foo my value", "get foobar"];
-    let expectations = ["*** success: wrote 48 bytes", "*** no match found"];
+    let expectations = ["*** success: wrote 49 bytes", "*** no match found"];
 
     test_harness(
         3,
