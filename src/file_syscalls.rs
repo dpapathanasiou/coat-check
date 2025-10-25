@@ -3,7 +3,67 @@ use nix::errno::Errno;
 use nix::fcntl::{Flock, FlockArg, OFlag, open};
 use nix::sys::stat::Mode;
 use nix::unistd::{Whence, lseek, read, write};
-use std::os::fd::{AsFd, OwnedFd};
+use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+
+const SPACER: usize = std::mem::size_of::<usize>();
+
+fn record_reader<F>(
+    fd: &BorrowedFd,
+    key: &str,
+    val: &[u8],
+    matchop: F,
+) -> Result<Option<Vec<u8>>, Errno>
+where
+    F: Fn(&BorrowedFd, [u8; SPACER], bool, &str, &[u8]) -> Result<Option<Vec<u8>>, Errno>,
+{
+    let size_buf: &mut [u8] = &mut vec![0; SPACER];
+    let mut sizer: [u8; SPACER] = [0; SPACER];
+
+    let hash = hasher::hash_key(key);
+    let key_buf: &mut [u8] = &mut vec![0; hash.len()];
+    let del_buf: &mut [u8] = &mut vec![0; 1];
+
+    // iterate through the records (`[(hashed) key][size of value][deleted?][value]` byte arrays) in file
+    let mut nbytes = read(fd, key_buf)?;
+    while nbytes > 0 {
+        if hash != str::from_utf8(key_buf).unwrap() {
+            // no match at the current key position,
+            // so read the value size, and skip ahead
+            // to the next key/value array
+            _ = read(fd, size_buf)?;
+            sizer.clone_from_slice(size_buf);
+            lseek(fd, i64::from_ne_bytes(sizer) + 1, Whence::SeekCur)?;
+            nbytes = read(fd, key_buf)?;
+        } else {
+            // matched, so get the value size, and the deleted flag, and execute the matchop function
+            _ = read(fd, size_buf)?;
+            sizer.clone_from_slice(size_buf);
+
+            _ = read(fd, del_buf)?;
+            return matchop(fd, sizer, del_buf == [1], key, val);
+        }
+    }
+
+    Ok(None)
+}
+
+fn find(
+    fd: &BorrowedFd,
+    sizer: [u8; SPACER],
+    deleted: bool,
+    _: &str,
+    _: &[u8],
+) -> Result<Option<Vec<u8>>, Errno> {
+    if !deleted {
+        // not deleted, so return it as a match
+        let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
+        _ = read(fd, val_buf)?;
+        let mut result = Vec::new();
+        result.extend_from_slice(val_buf);
+        return Ok(Some(result));
+    }
+    Ok(None)
+}
 
 pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
     let fd: OwnedFd = open(filepath.as_str(), OFlag::O_RDONLY, Mode::empty())?;
@@ -12,45 +72,11 @@ pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
         Err((_, e)) => return Err(e),
     };
 
-    const SPACER: usize = std::mem::size_of::<usize>();
-    let size_buf: &mut [u8] = &mut vec![0; SPACER];
-    let mut sizer: [u8; SPACER] = [0; SPACER];
-
-    let hash = hasher::hash_key(key);
-    let key_buf: &mut [u8] = &mut vec![0; hash.len()];
-    let del_buf: &mut [u8] = &mut vec![0; 1];
-
-    // iterate through the `[(hashed) key][size of value][deleted?][value]` byte arrays in file
-    let mut nbytes = read(lock.as_fd(), key_buf)?;
-    while nbytes > 0 {
-        if hash != str::from_utf8(key_buf).unwrap() {
-            // no match at the current key position,
-            // so read the value size, and skip ahead
-            // to the next key/value array
-            _ = read(lock.as_fd(), size_buf)?;
-            sizer.clone_from_slice(size_buf);
-            lseek(lock.as_fd(), i64::from_ne_bytes(sizer) + 1, Whence::SeekCur)?;
-            nbytes = read(lock.as_fd(), key_buf)?;
-        } else {
-            // matched, so get the value size, to read and return the value bytes, but only if not deleted
-            _ = read(lock.as_fd(), size_buf)?;
-            sizer.clone_from_slice(size_buf);
-
-            _ = read(lock.as_fd(), del_buf)?;
-            if del_buf == [0] {
-                // not deleted, so return it as a match
-                let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
-                _ = read(lock.as_fd(), val_buf)?;
-                let mut result = Vec::new();
-                result.extend_from_slice(val_buf);
-                drop(lock);
-                return Ok(Some(result));
-            }
-        }
-    }
+    let empty_buf: &mut [u8] = &mut vec![0; 1];
+    let result = record_reader(&lock.as_fd(), key, empty_buf, find);
 
     drop(lock);
-    Ok(None)
+    return result;
 }
 
 fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, Errno> {
@@ -69,11 +95,11 @@ fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, E
         Err((_, e)) => return Err(e),
     };
 
-    // produce a `[(hashed) key][size of value][deleted?][value]` byte array, given the key and value data
+    // produce a new record (`[(hashed) key][size of value][deleted?][value]` byte array), given the key and value data
     let hash = hasher::hash_key(key);
     let hash_size = hash.len();
     let val_size = val.iter().count();
-    let sizer: [u8; std::mem::size_of::<usize>()] = val_size.to_ne_bytes();
+    let sizer: [u8; SPACER] = val_size.to_ne_bytes();
     let sizer_size = sizer.len();
     let deleted: [u8; 1] = [0];
     let deleted_size = deleted.len();
@@ -83,6 +109,7 @@ fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, E
     buffer[hash_size + sizer_size..hash_size + sizer_size + deleted_size].copy_from_slice(&deleted);
     buffer[hash_size + sizer_size + deleted_size..].copy_from_slice(val);
 
+    // append it to the end of the file
     let nbytes = write(lock.as_fd(), buffer)?;
     drop(lock);
     Ok(nbytes)
