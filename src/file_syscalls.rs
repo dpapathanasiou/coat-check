@@ -54,6 +54,28 @@ where
     Err(Errno::EKEYEXPIRED)
 }
 
+/* Higher order functions, to use as `matchop: F` in `record_reader<F>`
+ *
+ * find()   used by read_key()
+ * delete() used by delete_key()
+ *
+ */
+
+fn find(fd: &BorrowedFd, sizer: [u8; SPACER], _: &str, _: &[u8]) -> Result<Option<Vec<u8>>, Errno> {
+    let del_buf: &mut [u8] = &mut vec![0; 1];
+    _ = read(fd, del_buf)?;
+    if del_buf[0] == 0 {
+        // not deleted, so return it as a match
+        let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
+        _ = read(fd, val_buf)?;
+        let mut result = Vec::new();
+        result.extend_from_slice(val_buf);
+        return Ok(Some(result));
+    }
+    // not found on this iteration of the record_reader() loop
+    Ok(None)
+}
+
 fn delete(
     fd: &BorrowedFd,
     sizer: [u8; SPACER],
@@ -81,6 +103,39 @@ fn delete(
     Ok(None)
 }
 
+/* Public API  */
+
+pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
+    let fd: OwnedFd = open(filepath.as_str(), OFlag::O_RDONLY, Mode::empty())?;
+    let lock = match Flock::lock(fd, FlockArg::LockShared) {
+        Ok(locked) => locked,
+        Err((_, e)) => return Err(e),
+    };
+
+    let mut result: Result<Option<Vec<u8>>, Errno>;
+    loop {
+        let empty_buf: &mut [u8] = &mut vec![0; 1];
+        result = record_reader(&lock.as_fd(), key, empty_buf, find);
+        // stop if found a matching, non-deleted key
+        if result.is_ok() {
+            break;
+        }
+        // or if reached EOF
+        if result.is_err_and(|x| x == Errno::EKEYEXPIRED) {
+            result = Ok(None);
+            break;
+        }
+    }
+
+    match lock.unlock() {
+        Ok(unlocked) => {
+            close(unlocked)?;
+            result
+        }
+        Err((_, e)) => Err(e),
+    }
+}
+
 pub fn delete_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
     let fd: OwnedFd = open(
         filepath.as_str(),
@@ -102,52 +157,6 @@ pub fn delete_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno>
         let empty_buf: &mut [u8] = &mut vec![0; 1];
         result = record_reader(&lock.as_fd(), key, empty_buf, delete);
         // stop if found a matching key which was previously non-deleted
-        if result.is_ok() {
-            break;
-        }
-        // or if reached EOF
-        if result.is_err_and(|x| x == Errno::EKEYEXPIRED) {
-            result = Ok(None);
-            break;
-        }
-    }
-
-    match lock.unlock() {
-        Ok(unlocked) => {
-            close(unlocked)?;
-            result
-        }
-        Err((_, e)) => Err(e),
-    }
-}
-
-fn find(fd: &BorrowedFd, sizer: [u8; SPACER], _: &str, _: &[u8]) -> Result<Option<Vec<u8>>, Errno> {
-    let del_buf: &mut [u8] = &mut vec![0; 1];
-    _ = read(fd, del_buf)?;
-    if del_buf[0] == 0 {
-        // not deleted, so return it as a match
-        let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
-        _ = read(fd, val_buf)?;
-        let mut result = Vec::new();
-        result.extend_from_slice(val_buf);
-        return Ok(Some(result));
-    }
-    // not found on this iteration of the record_reader() loop
-    Ok(None)
-}
-
-pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
-    let fd: OwnedFd = open(filepath.as_str(), OFlag::O_RDONLY, Mode::empty())?;
-    let lock = match Flock::lock(fd, FlockArg::LockShared) {
-        Ok(locked) => locked,
-        Err((_, e)) => return Err(e),
-    };
-
-    let mut result: Result<Option<Vec<u8>>, Errno>;
-    loop {
-        let empty_buf: &mut [u8] = &mut vec![0; 1];
-        result = record_reader(&lock.as_fd(), key, empty_buf, find);
-        // stop if found a matching, non-deleted key
         if result.is_ok() {
             break;
         }
