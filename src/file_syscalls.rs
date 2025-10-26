@@ -180,7 +180,7 @@ pub fn delete_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno>
     }
 }
 
-pub fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, Errno> {
+fn append_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, Errno> {
     let fd: OwnedFd = open(
         filepath.as_str(),
         OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_APPEND,
@@ -226,11 +226,22 @@ pub fn write_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, E
     // before writing this as a new key-value pair, make sure it does not already exist
     match read_key(filepath.clone(), key) {
         Ok(result) => match result {
-            Some(_) => Ok(0), // key already exists, so do nothing
-            None => write_new_key_val(filepath, key, val),
+            Some(value_vector) => {
+                // key already exists, so upsert if the value is different
+                if val == value_vector {
+                    Ok(0)
+                } else {
+                    // upsert: delete the current key, and append the new value
+                    match delete_key(filepath.clone(), key) {
+                        Ok(_) => append_new_key_val(filepath, key, val),
+                        Err(e) => Err(e),
+                    }
+                }
+            }
+            None => append_new_key_val(filepath, key, val),
         },
         Err(e) => match e {
-            Errno::ENOENT => write_new_key_val(filepath, key, val), // file does not exist yet, so create it with this as the first entry
+            Errno::ENOENT => append_new_key_val(filepath, key, val), // file does not exist yet, so create it with this as the first entry
             _ => Err(e),
         },
     }
