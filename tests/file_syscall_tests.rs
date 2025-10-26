@@ -1,4 +1,4 @@
-use coat_check::file_syscalls::{read_key, write_key_val};
+use coat_check::file_syscalls::{delete_key, read_key, write_key_val};
 use nix::errno::Errno;
 use std::thread;
 use std::time::Duration;
@@ -37,8 +37,39 @@ fn write_then_read_key_works() {
 }
 
 #[test]
-fn duplicate_key_writes_do_not_upsert() {
+fn write_then_delete_key_works() {
     let file_folder = common::generate_test_file(2);
+
+    // write() to a non-existent file should succeed
+    let test_key = "boo";
+    let expected = b"some value goes here";
+    let write_result = write_key_val(file_folder.clone(), test_key, expected);
+    assert!(write_result.is_ok());
+
+    // attempt to delete the just-written key
+    let delete_result = delete_key(file_folder.clone(), test_key);
+    match delete_result {
+        Ok(bytes) => match bytes {
+            Some(value_vector) => assert_eq!(value_vector, expected), // successful delete returns the corresponding value, for reference
+            None => assert!(false),
+        },
+        Err(_) => assert!(false),
+    }
+
+    // reading back the just-deleted key should fail
+    let read_result = read_key(file_folder.clone(), test_key);
+    match read_result {
+        Ok(bytes) => match bytes {
+            Some(_) => assert!(false),
+            None => assert!(true),
+        },
+        Err(_) => assert!(false),
+    }
+}
+
+#[test]
+fn duplicate_key_writes_do_not_upsert() {
+    let file_folder = common::generate_test_file(3);
 
     // write() to a non-existent file should succeed
     let test_key = "the key";
@@ -67,7 +98,7 @@ fn duplicate_key_writes_do_not_upsert() {
 
 #[test]
 fn lock_on_writes_blocks_reads_without_errors() {
-    let file_folder = common::generate_test_file(3);
+    let file_folder = common::generate_test_file(4);
 
     let keys = vec![
         "α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "ο", "π", "ρ", "σ",
