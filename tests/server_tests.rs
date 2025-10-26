@@ -63,12 +63,18 @@ fn server_write_then_read_key_works() {
 }
 
 #[test]
-fn server_duplicate_key_writes_do_not_upsert() {
-    let actions = ["set foo my value", "set foo 한국어 키보드", "get foo"];
+fn server_duplicate_key_writes_upsert() {
+    let actions = [
+        "set foo my value",
+        "set foo 한국어 키보드",
+        "get foo",
+        "set foo 한국어 키보드",
+    ];
     let expectations = [
         "*** success: wrote 49 bytes",
+        "*** success: wrote 60 bytes",
+        "한국어 키보드",
         "*** success: wrote 0 bytes",
-        "my value",
     ];
 
     test_harness(

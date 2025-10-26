@@ -66,10 +66,52 @@ fn write_then_delete_key_works() {
         Err(_) => assert!(false),
     }
 }
+#[test]
+fn write_then_delete_key_multiple_time_produces_last_value() {
+    let file_folder = common::generate_test_file(3);
+
+    // same key but different values
+    let key = "katakana";
+    let vals = vec!["あ", "い", "う", "え", "お"];
+    let cases = vals.len();
+
+    for i in 0..cases {
+        // write the new value for the key
+        let write_result = write_key_val(file_folder.clone(), key, vals.get(i).unwrap().as_bytes());
+        assert!(write_result.is_ok());
+
+        // reading back the just-written key should work
+        let read_result = read_key(file_folder.clone(), key);
+        match read_result {
+            Ok(bytes) => match bytes {
+                Some(_) => assert!(true),
+                None => assert!(false),
+            },
+            Err(_) => assert!(false),
+        }
+
+        if i != cases - 1 {
+            // delete the key before attempting to write the next value
+            let delete_result = delete_key(file_folder.clone(), key);
+            assert!(delete_result.is_ok());
+        }
+    }
+
+    // final read of the key should be the last value
+    let read_result = read_key(file_folder.clone(), key);
+    let expected = vals.last().unwrap().as_bytes();
+    match read_result {
+        Ok(bytes) => match bytes {
+            Some(value_vector) => assert_eq!(value_vector, expected),
+            None => assert!(false),
+        },
+        Err(_) => assert!(false),
+    }
+}
 
 #[test]
-fn duplicate_key_writes_do_not_upsert() {
-    let file_folder = common::generate_test_file(3);
+fn duplicate_key_writes_upsert() {
+    let file_folder = common::generate_test_file(4);
 
     // write() to a non-existent file should succeed
     let test_key = "the key";
@@ -81,24 +123,32 @@ fn duplicate_key_writes_do_not_upsert() {
     let second_write_result = write_key_val(file_folder.clone(), test_key, second_val);
     assert!(second_write_result.is_ok());
     match second_write_result {
-        Ok(bytes) => assert_eq!(bytes, 0), // i.e., it did not write the new value
+        Ok(bytes) => assert_ne!(bytes, 0), // i.e., it did write the new value
         Err(_) => assert!(false),
     }
 
-    // and reading back the just-written key should succeed and match
+    // and reading back the just-written key should succeed and match the second value
     let read_result = read_key(file_folder.clone(), test_key);
     match read_result {
         Ok(bytes) => match bytes {
-            Some(value_vector) => assert_eq!(value_vector, first_val),
+            Some(value_vector) => assert_eq!(value_vector, second_val),
             None => assert!(false),
         },
+        Err(_) => assert!(false),
+    }
+
+    // but attempting to rewrite the same key-value pair should result in no action
+    let second_write_result_redux = write_key_val(file_folder.clone(), test_key, second_val);
+    assert!(second_write_result_redux.is_ok());
+    match second_write_result_redux {
+        Ok(bytes) => assert_eq!(bytes, 0), // i.e., it did not write the new value, since it was the same as before
         Err(_) => assert!(false),
     }
 }
 
 #[test]
 fn lock_on_writes_blocks_reads_without_errors() {
-    let file_folder = common::generate_test_file(4);
+    let file_folder = common::generate_test_file(5);
 
     let keys = vec![
         "α", "β", "γ", "δ", "ε", "ζ", "η", "θ", "ι", "κ", "λ", "μ", "ν", "ξ", "ο", "π", "ρ", "σ",
