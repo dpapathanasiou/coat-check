@@ -2,7 +2,7 @@ use crate::hasher;
 use nix::errno::Errno;
 use nix::fcntl::{Flock, FlockArg, OFlag, open};
 use nix::sys::stat::Mode;
-use nix::unistd::{Whence, lseek, read, write};
+use nix::unistd::{Whence, close, lseek, read, write};
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 
 const SPACER: usize = std::mem::size_of::<usize>();
@@ -32,7 +32,8 @@ where
             // to the next key/value array
             _ = read(fd, size_buf)?;
             sizer.clone_from_slice(size_buf);
-            lseek(fd, i64::from_ne_bytes(sizer) + 1, Whence::SeekCur)?;
+            _ = read(fd, del_buf)?; // skip over the delete flag
+            lseek(fd, i64::from_ne_bytes(sizer), Whence::SeekCur)?;
             nbytes = read(fd, key_buf)?;
         } else {
             // matched, so get the value size, and the deleted flag, and execute the matchop function
@@ -75,8 +76,13 @@ pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
     let empty_buf: &mut [u8] = &mut vec![0; 1];
     let result = record_reader(&lock.as_fd(), key, empty_buf, find);
 
-    drop(lock);
-    return result;
+    match lock.unlock() {
+        Ok(unlocked) => {
+            close(unlocked)?;
+            result
+        }
+        Err((_, e)) => Err(e),
+    }
 }
 
 fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, Errno> {
@@ -111,8 +117,14 @@ fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, E
 
     // append it to the end of the file
     let nbytes = write(lock.as_fd(), buffer)?;
-    drop(lock);
-    Ok(nbytes)
+
+    match lock.unlock() {
+        Ok(unlocked) => {
+            close(unlocked)?;
+            Ok(nbytes)
+        }
+        Err((_, e)) => Err(e),
+    }
 }
 
 pub fn write_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, Errno> {
