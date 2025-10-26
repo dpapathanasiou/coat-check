@@ -7,14 +7,9 @@ use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 
 const SPACER: usize = std::mem::size_of::<usize>();
 
-fn record_reader<F>(
-    fd: &BorrowedFd,
-    key: &str,
-    val: &[u8],
-    matchop: F,
-) -> Result<Option<Vec<u8>>, Errno>
+fn record_reader<F>(fd: &BorrowedFd, key: &str, matchop: F) -> Result<Option<Vec<u8>>, Errno>
 where
-    F: Fn(&BorrowedFd, [u8; SPACER], &str, &[u8]) -> Result<Option<Vec<u8>>, Errno>,
+    F: Fn(&BorrowedFd, [u8; SPACER]) -> Result<Option<Vec<u8>>, Errno>,
 {
     let size_buf: &mut [u8] = &mut vec![0; SPACER];
     let mut sizer: [u8; SPACER] = [0; SPACER];
@@ -39,7 +34,7 @@ where
             _ = read(fd, size_buf)?;
             sizer.clone_from_slice(size_buf);
 
-            match matchop(fd, sizer, key, val) {
+            match matchop(fd, sizer) {
                 Ok(result) => match result {
                     Some(data) => return Ok(Some(data)), // stop iterating through the file
                     None => (),
@@ -61,7 +56,7 @@ where
  *
  */
 
-fn find(fd: &BorrowedFd, sizer: [u8; SPACER], _: &str, _: &[u8]) -> Result<Option<Vec<u8>>, Errno> {
+fn find(fd: &BorrowedFd, sizer: [u8; SPACER]) -> Result<Option<Vec<u8>>, Errno> {
     // read the deleted flag
     let del_buf: &mut [u8] = &mut vec![0; 1];
     _ = read(fd, del_buf)?;
@@ -78,12 +73,7 @@ fn find(fd: &BorrowedFd, sizer: [u8; SPACER], _: &str, _: &[u8]) -> Result<Optio
     Ok(None)
 }
 
-fn delete(
-    fd: &BorrowedFd,
-    sizer: [u8; SPACER],
-    _: &str,
-    _: &[u8],
-) -> Result<Option<Vec<u8>>, Errno> {
+fn delete(fd: &BorrowedFd, sizer: [u8; SPACER]) -> Result<Option<Vec<u8>>, Errno> {
     // record the current file position, before reading the deleted flag
     let current_pos = lseek(fd, 0, Whence::SeekCur)?;
     // read the deleted flag
@@ -118,8 +108,7 @@ pub fn read_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno> {
 
     let mut result: Result<Option<Vec<u8>>, Errno>;
     loop {
-        let empty_buf: &mut [u8] = &mut vec![0; 1];
-        result = record_reader(&lock.as_fd(), key, empty_buf, find);
+        result = record_reader(&lock.as_fd(), key, find);
         // stop if found a matching, non-deleted key
         if result.is_ok() {
             break;
@@ -158,8 +147,7 @@ pub fn delete_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno>
 
     let mut result: Result<Option<Vec<u8>>, Errno>;
     loop {
-        let empty_buf: &mut [u8] = &mut vec![0; 1];
-        result = record_reader(&lock.as_fd(), key, empty_buf, delete);
+        result = record_reader(&lock.as_fd(), key, delete);
         // stop if found a matching key which was previously non-deleted
         if result.is_ok() {
             break;
