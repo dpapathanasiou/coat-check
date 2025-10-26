@@ -1,4 +1,4 @@
-use coat_check::file_syscalls::{read_key, write_key_val};
+use coat_check::file_syscalls::{delete_key, read_key, write_key_val};
 use coat_check::fork_syscalls::size;
 use coat_check::server::Server;
 use log::{error, info};
@@ -35,7 +35,7 @@ fn main() {
         std::process::exit(0);
     }
 
-    let action = &args[1]; // "get" or "set"
+    let action = &args[1]; // "get", "set", or "del"
     match action.as_str() {
         "get" => match read_key(file_folder.clone(), &args[2]) {
             Ok(bytes) => match bytes {
@@ -49,6 +49,16 @@ fn main() {
         },
         "set" => match write_key_val(file_folder.clone(), &args[2], &args[3].as_bytes()) {
             Ok(bytes) => info!("success: wrote {bytes} bytes"),
+            Err(e) => {
+                error!("syscall error {:#?}", e);
+                std::process::exit(1);
+            }
+        },
+        "del" => match delete_key(file_folder.clone(), &args[2]) {
+            Ok(bytes) => match bytes {
+                Some(result) => info!("success: deleted value -> {:?}", String::from_utf8(result)),
+                None => info!("no match found"),
+            },
             Err(e) => {
                 error!("syscall error {:#?}", e);
                 std::process::exit(1);

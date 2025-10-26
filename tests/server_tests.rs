@@ -97,12 +97,29 @@ fn server_unknown_key_no_match() {
 }
 
 #[test]
+fn server_delete_key_works() {
+    let actions = ["set foo my value", "get foo", "del foo", "get foo"];
+    let expectations = [
+        "*** success: wrote 49 bytes",
+        "my value",
+        "my value",
+        "*** no match found",
+    ];
+
+    test_harness(
+        4,
+        actions.iter().map(|&s| s.into()).collect(),
+        expectations.iter().map(|&s| s.into()).collect(),
+    );
+}
+
+#[test]
 fn server_invalid_command_warning() {
     let actions = ["what is your name?"];
     let expectations = ["*** invalid command"];
 
     test_harness(
-        4,
+        5,
         actions.iter().map(|&s| s.into()).collect(),
         expectations.iter().map(|&s| s.into()).collect(),
     );

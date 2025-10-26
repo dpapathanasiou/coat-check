@@ -28,28 +28,64 @@ This is a typical [Rust](https://www.rust-lang.org/) application, using [Cargo](
 
 ## Run
 
-### Transactional: 'get' or 'set' one at a time
+### Transactional: 'get', 'set', or 'del' one at a time
 
 ```sh
 $ cargo run set foo "this is the value for 'foo'"
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.15s
-    ...
-[2025-10-12T16:15:45Z INFO  coat_check] success: wrote 67 bytes
-fork(wc): parent pid 22898 -> child pid 22905
-fork(wc): in child -> pid 22905
-67 /tmp/data.coat-check
-fork(wc): in parent -> child pid 22905 exited, status = 0
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running `target/debug/coat-check set foo 'this is the value for '\''foo'\'''`
+fork(wc): parent pid 42513 -> child pid 42519
+fork(wc): in child -> pid 42519
+wc: /tmp/data.coat-check: No such file or directory
+fork(wc): in parent -> child pid 42519 exited, status = 1
+[2025-10-26T18:00:33Z INFO  coat_check] success: wrote 68 bytes
+fork(wc): parent pid 42513 -> child pid 42520
+fork(wc): in child -> pid 42520
+68 /tmp/data.coat-check
+fork(wc): in parent -> child pid 42520 exited, status = 0
 ```
 
 ```sh
 $ cargo run get foo
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
-    ...
-[2025-10-12T16:15:54Z INFO  coat_check] success: matched -> Ok("this is the value for 'foo'")
-fork(wc): parent pid 22906 -> child pid 22913
-fork(wc): in child -> pid 22913
-67 /tmp/data.coat-check
-fork(wc): in parent -> child pid 22913 exited, status = 0
+     Running `target/debug/coat-check get foo`
+fork(wc): parent pid 42527 -> child pid 42533
+fork(wc): in child -> pid 42533
+68 /tmp/data.coat-check
+fork(wc): in parent -> child pid 42533 exited, status = 0
+[2025-10-26T18:01:08Z INFO  coat_check] success: matched -> Ok("this is the value for 'foo'")
+fork(wc): parent pid 42527 -> child pid 42534
+fork(wc): in child -> pid 42534
+68 /tmp/data.coat-check
+fork(wc): in parent -> child pid 42534 exited, status = 0
+```
+
+```sh
+$ cargo run del foo
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running `target/debug/coat-check del foo`
+fork(wc): parent pid 42606 -> child pid 42612
+fork(wc): in child -> pid 42612
+68 /tmp/data.coat-check
+fork(wc): in parent -> child pid 42612 exited, status = 0
+[2025-10-26T18:02:07Z INFO  coat_check] success: deleted value -> Ok("this is the value for 'foo'")
+fork(wc): parent pid 42606 -> child pid 42613
+fork(wc): in child -> pid 42613
+68 /tmp/data.coat-check
+fork(wc): in parent -> child pid 42613 exited, status = 0
+
+$ cargo run get foo
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running `target/debug/coat-check get foo`
+fork(wc): parent pid 42669 -> child pid 42675
+fork(wc): in child -> pid 42675
+68 /tmp/data.coat-check
+fork(wc): in parent -> child pid 42675 exited, status = 0
+[2025-10-26T18:02:39Z INFO  coat_check] no match found
+fork(wc): parent pid 42669 -> child pid 42676
+fork(wc): in child -> pid 42676
+68 /tmp/data.coat-check
+fork(wc): in parent -> child pid 42676 exited, status = 0
 ```
 
 ### Server Mode
@@ -73,13 +109,17 @@ this is the value for 'foo'
 get bar
 *** no match found
 set bar 私は毎日勉強します。
-*** success: wrote 70 bytes
+*** success: wrote 71 bytes
 get bar
 私は毎日勉強します。
+del bar
+私は毎日勉強します。
+get bar
+*** no match found
 what?
 *** invalid command
 Usage:
-<get> <key> | <set> <key> <value>
+<get> <key> | <set> <key> <value> | <del> <key>
 ^]
 telnet> close
 Connection closed.

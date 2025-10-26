@@ -1,4 +1,4 @@
-use crate::file_syscalls::{read_key, write_key_val};
+use crate::file_syscalls::{delete_key, read_key, write_key_val};
 use libc::{c_void, pthread_create, pthread_detach, pthread_t};
 use nix::errno::Errno;
 use nix::sys::socket::{
@@ -24,7 +24,7 @@ extern "C" fn handle_client(arg: *mut c_void) -> *mut c_void {
     let mut buf = [0u8; 1024];
     let read_err_msg = String::from("Failed to read from client");
     let write_err_msg = String::from("Failed to send to client");
-    let usage = String::from("Usage:\r\n<get> <key> | <set> <key> <value>");
+    let usage = String::from("Usage:\r\n<get> <key> | <set> <key> <value> | <del> <key>");
 
     let mut nbytes = recv(args.clientfd, &mut buf, MsgFlags::empty()).expect(&read_err_msg);
     while nbytes > 0 {
@@ -91,6 +91,30 @@ extern "C" fn handle_client(arg: *mut c_void) -> *mut c_void {
                             buf[r..r + 2].copy_from_slice(b"\r\n")
                         }
                     }
+                    send(args.clientfd, &mut buf, MsgFlags::empty()).expect(&write_err_msg);
+                    replied = true;
+                } else if cmd == "del" && cmd_size == 2 {
+                    match delete_key(args.filepath.clone(), str::from_utf8(parts[1]).unwrap()) {
+                        Ok(bytes) => match bytes {
+                            Some(result) => {
+                                let r = result.len();
+                                buf[0..r].copy_from_slice(result.as_slice());
+                                buf[r..r + 2].copy_from_slice(b"\r\n")
+                            }
+                            None => {
+                                let no_match = String::from("*** no match found");
+                                let r = no_match.len();
+                                buf[0..r].copy_from_slice(no_match.as_bytes());
+                                buf[r..r + 2].copy_from_slice(b"\r\n")
+                            }
+                        },
+                        Err(e) => {
+                            let result = format!("*** error: {:?}", e.desc());
+                            let r = result.len();
+                            buf[0..r].copy_from_slice(result.as_bytes());
+                            buf[r..r + 2].copy_from_slice(b"\r\n")
+                        }
+                    };
                     send(args.clientfd, &mut buf, MsgFlags::empty()).expect(&write_err_msg);
                     replied = true;
                 }
