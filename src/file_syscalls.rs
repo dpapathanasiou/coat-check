@@ -34,7 +34,6 @@ where
             sizer.clone_from_slice(size_buf);
             _ = read(fd, del_buf)?; // skip over the delete flag
             lseek(fd, i64::from_ne_bytes(sizer), Whence::SeekCur)?;
-            nbytes = read(fd, key_buf)?;
         } else {
             // matched, so get the value size, and execute the matchop function
             _ = read(fd, size_buf)?;
@@ -43,11 +42,12 @@ where
             match matchop(fd, sizer, key, val) {
                 Ok(result) => match result {
                     Some(data) => return Ok(Some(data)), // stop iterating through the file
-                    None => break,
+                    None => (),
                 },
                 Err(e) => return Err(e),
             }
         }
+        nbytes = read(fd, key_buf)?;
     }
 
     // reached the EOF without a match: use EKEYEXPIRED (Key has expired) as the return value
@@ -62,12 +62,14 @@ where
  */
 
 fn find(fd: &BorrowedFd, sizer: [u8; SPACER], _: &str, _: &[u8]) -> Result<Option<Vec<u8>>, Errno> {
+    // read the deleted flag
     let del_buf: &mut [u8] = &mut vec![0; 1];
     _ = read(fd, del_buf)?;
+    // also read the value, regardless, otherwise the record_reader() loop will not continue in the correct position
+    let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
+    _ = read(fd, val_buf)?;
     if del_buf[0] == 0 {
-        // not deleted, so return it as a match
-        let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
-        _ = read(fd, val_buf)?;
+        // not deleted, so return the corresponding value as a match
         let mut result = Vec::new();
         result.extend_from_slice(val_buf);
         return Ok(Some(result));
@@ -84,17 +86,19 @@ fn delete(
 ) -> Result<Option<Vec<u8>>, Errno> {
     // record the current file position, before reading the deleted flag
     let current_pos = lseek(fd, 0, Whence::SeekCur)?;
+    // read the deleted flag
     let del_buf: &mut [u8] = &mut vec![0; 1];
     _ = read(fd, del_buf)?;
+    // also read the value, regardless, otherwise the record_reader() loop will not continue in the correct position
+    let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
+    _ = read(fd, val_buf)?;
     if del_buf[0] == 0 {
-        // not deleted, so overwrite its deleted flag as true
+        // not deleted, so back up, and overwrite the deleted flag to true
         lseek(fd, current_pos, Whence::SeekSet)?;
         let deleted: &mut [u8] = &mut vec![1; 1];
         _ = write(fd, deleted)?;
 
         // return the corresponding value, so that the caller knows to stop iterating
-        let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
-        _ = read(fd, val_buf)?;
         let mut result = Vec::new();
         result.extend_from_slice(val_buf);
         return Ok(Some(result));
@@ -176,7 +180,7 @@ pub fn delete_key(filepath: String, key: &str) -> Result<Option<Vec<u8>>, Errno>
     }
 }
 
-fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, Errno> {
+pub fn write_new_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, Errno> {
     let fd: OwnedFd = open(
         filepath.as_str(),
         OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_APPEND,
