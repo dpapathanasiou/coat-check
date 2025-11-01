@@ -20,7 +20,7 @@ While the data format meets the basic requirements, including the ability to acc
 
 - Does not scale easily, since writes are accepted in the order received, and reads do not have the benefit of using an index, etc.
 - Keys must hash to the same size, otherwise the read algorithm does not work
-- Deletes and upserts waste space until [compaction is requested](#compact-the-data-file) explicitly
+- Deletes and upserts waste space until [compaction is requested](#compacting-the-data-file) explicitly
 
 # Usage
 
@@ -88,18 +88,6 @@ fork(wc): in child -> pid 42676
 fork(wc): in parent -> child pid 42676 exited, status = 0
 ```
 
-#### Compact the data file
-
-This command removes all records whose deleted flag is true from the data file:
-
-```sh
-$ cargo run compact
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
-     Running `target/debug/coat-check compact`
-     ...
-[2025-11-01T14:58:08Z INFO  coat_check] compact complete
-```
-
 ### Server Mode
 
 ```sh
@@ -136,6 +124,35 @@ Usage:
 telnet> close
 Connection closed.
 ```
+
+### Compacting the data file
+
+This command removes all records whose deleted flag is true from the data file:
+
+```sh
+$ cargo run compact
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running `target/debug/coat-check compact`
+     ...
+[2025-11-01T14:58:08Z INFO  coat_check] compact complete
+```
+
+While running in server mode, it is also possible to send a [signal](https://www.man7.org/linux/man-pages/man7/signal.7.html) of type `SIGUSR2` which sets the compaction to happen at the next client connection, before it spawns a new thread to handle the new connection:
+
+```sh
+(client) $ kill -12 [pid]
+...
+(server) [running as `pid`]
+    Server listening on 5000 -> 3
+    Connected to client: 4 -> "/tmp/data.coat-check"
+    sig :: Received compact signal 12!
+    sig :: COMPACT_SIGNALED contains true
+    Compacting "/tmp/data.coat-check" -- please wait
+    Compacting "/tmp/data.coat-check" -- completed
+```
+
+
+
 
 ## Test
 ```sh
