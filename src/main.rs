@@ -1,7 +1,8 @@
-use coat_check::file_syscalls::{delete_key, read_key, write_key_val};
+use coat_check::file_syscalls::{compact, delete_key, read_key, write_key_val};
 use coat_check::fork_syscalls::size;
 use coat_check::server::Server;
 use log::{error, info};
+use nix::errno::Errno;
 use std::env;
 
 fn main() {
@@ -29,9 +30,26 @@ fn main() {
                 std::process::exit(1);
             }
         }
+    } else if args.len() == 2 && &args[1] == "compact" {
+        match compact(file_folder.clone()) {
+            Ok(_) => {
+                info!("compact complete");
+                std::process::exit(0)
+            }
+            Err(e) => match e {
+                Errno::ENOENT => {
+                    info!("nothing to compact, no data in {:#?}", file_folder);
+                    std::process::exit(0)
+                }
+                _ => {
+                    error!("compact error {:#?}", e);
+                    std::process::exit(1)
+                }
+            },
+        }
     } else if args.len() < 3 {
         let prog = &args[0];
-        error!("Usage:\n\n{prog} <server> | <(get|set) [key] [value (only with 'set')]>");
+        error!("Usage:\n\n{prog} <server> | compact | <(get|set) [key] [value (only with 'set')]>");
         std::process::exit(0);
     }
 

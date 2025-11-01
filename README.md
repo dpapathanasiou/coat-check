@@ -20,7 +20,7 @@ While the data format meets the basic requirements, including the ability to acc
 
 - Does not scale easily, since writes are accepted in the order received, and reads do not have the benefit of using an index, etc.
 - Keys must hash to the same size, otherwise the read algorithm does not work
-- Deletes and upserts waste space
+- Deletes and upserts waste space until [compaction is requested](#compact-the-data-file) explicitly
 
 # Usage
 
@@ -88,6 +88,18 @@ fork(wc): in child -> pid 42676
 fork(wc): in parent -> child pid 42676 exited, status = 0
 ```
 
+#### Compact the data file
+
+This command removes all records whose deleted flag is true from the data file:
+
+```sh
+$ cargo run compact
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running `target/debug/coat-check compact`
+     ...
+[2025-11-01T14:58:08Z INFO  coat_check] compact complete
+```
+
 ### Server Mode
 
 ```sh
@@ -128,64 +140,66 @@ Connection closed.
 ## Test
 ```sh
 $ cargo test
-   Compiling coat-check v0.1.0 (/home/denis/repos/repos-git/coat-check)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.51s
-     Running unittests src/lib.rs (target/debug/deps/coat_check-227f48b038e3e103)
+...
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Running unittests src/main.rs (target/debug/deps/coat_check-d653779de2de4076)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/main.rs (target/debug/deps/coat_check-33fa1bc2af5a93e8)
+    Running tests/common.rs (target/debug/deps/common-e18dd3a678e2d924)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/common.rs (target/debug/deps/common-00f423a589c53024)
+    Running tests/file_syscall_tests.rs (target/debug/deps/file_syscall_tests-1bc8364e6a863a5d)
 
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-     Running tests/file_syscall_tests.rs (target/debug/deps/file_syscall_tests-c7da6a126ced8d2b)
-
-running 6 tests
+running 7 tests
 test first_read_key_fails ... ok
-test write_then_delete_key_multiple_time_produces_last_value ... ok
 test duplicate_key_writes_upsert ... ok
 test write_then_delete_key_works ... ok
 test write_then_read_key_works ... ok
+test write_then_delete_key_multiple_time_produces_last_value ... ok
+test compaction_works ... ok
 test lock_on_writes_blocks_reads_without_errors ... ok
 
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.11s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.11s
 
-     Running tests/hasher_test.rs (target/debug/deps/hasher_test-42b23e642164dcec)
+    Running tests/hasher_test.rs (target/debug/deps/hasher_test-48d45347db5a6769)
 
 running 2 tests
-test key_hashing_is_case_sensitive ... ok
 test key_hashing_is_deterministic ... ok
+test key_hashing_is_case_sensitive ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/server_tests.rs (target/debug/deps/server_tests-5173f9145dc4e575)
+    Running tests/server_tests.rs (target/debug/deps/server_tests-3d82c51ee34446ef)
 
-running 4 tests
-Connected to client: 5 -> "/tmp/test-1761500030-2.coat-check"
-Connected to client: 6 -> "/tmp/test-1761500030-4.coat-check"
-Connected to client: 8 -> "/tmp/test-1761500030-1.coat-check"
-Connected to client: 10 -> "/tmp/test-1761500030-3.coat-check"
-Disconnected from client: 6 -> "/tmp/test-1761500030-4.coat-check"
+running 5 tests
+Connected to client: 4 -> "/tmp/test-1762008123-4.coat-check"
+Connected to client: 6 -> "/tmp/test-1762008123-5.coat-check"
+Connected to client: 10 -> "/tmp/test-1762008123-2.coat-check"
 test server_invalid_command_warning ... ok
-test server_unknown_key_no_match ... ok
-Disconnected from client: 10 -> "/tmp/test-1761500030-3.coat-check"
-test server_write_then_read_key_works ... Disconnected from client: 8 -> "/tmp/test-1761500030-1.coat-check"
-ok
+Disconnected from client: 6 -> "/tmp/test-1762008123-5.coat-check"
+Disconnected from client: 4 -> "/tmp/test-1762008123-4.coat-check"
+test server_delete_key_works ... ok
 test server_duplicate_key_writes_upsert ... ok
+Connected to client: 8 -> "/tmp/test-1762008123-3.coat-check"
+Disconnected from client: 10 -> "/tmp/test-1762008123-2.coat-check"
+test server_unknown_key_no_match ... Disconnected from client: 8 -> "/tmp/test-1762008123-3.coat-check"
+ok
+Connected to client: 12 -> "/tmp/test-1762008123-1.coat-check"
+test server_write_then_read_key_works ... ok
+Disconnected from client: 12 -> "/tmp/test-1762008123-1.coat-check"
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
 
-Disconnected from client: 5 -> "/tmp/test-1761500030-2.coat-check"   Doc-tests coat_check
+  Doc-tests coat_check
 
 running 0 tests
 
