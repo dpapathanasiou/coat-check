@@ -1,6 +1,7 @@
 use crate::hasher;
+use chrono::Utc;
 use nix::errno::Errno;
-use nix::fcntl::{Flock, FlockArg, OFlag, open};
+use nix::fcntl::{Flock, FlockArg, OFlag, open, renameat};
 use nix::sys::stat::Mode;
 use nix::unistd::{Whence, close, lseek, read, write};
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -232,5 +233,80 @@ pub fn write_key_val(filepath: String, key: &str, val: &[u8]) -> Result<usize, E
             Errno::ENOENT => append_new_key_val(filepath, key, val), // file does not exist yet, so create it with this as the first entry
             _ => Err(e),
         },
+    }
+}
+
+pub fn compact(filepath: String) -> Result<Option<Vec<u8>>, Errno> {
+    let read_fd: OwnedFd = open(filepath.as_str(), OFlag::O_RDONLY, Mode::empty())?;
+    let read_lock = match Flock::lock(read_fd, FlockArg::LockExclusive) {
+        Ok(locked) => locked,
+        Err((_, e)) => return Err(e),
+    };
+
+    let tmp_filepath = format!(
+        "/tmp/compact-{}.coat-check",
+        Utc::now().timestamp().to_string()
+    );
+
+    let tmp_fd: OwnedFd = open(
+        tmp_filepath.as_str(),
+        OFlag::O_WRONLY | OFlag::O_CREAT,
+        Mode::S_IRUSR
+            | Mode::S_IWUSR
+            | Mode::S_IRGRP
+            | Mode::S_IWGRP
+            | Mode::S_IROTH
+            | Mode::S_IWOTH,
+    )?;
+    let tmp_lock = match Flock::lock(tmp_fd, FlockArg::LockExclusive) {
+        Ok(locked) => locked,
+        Err((_, e)) => return Err(e),
+    };
+
+    let size_buf: &mut [u8] = &mut vec![0; SPACER];
+    let mut sizer: [u8; SPACER] = [0; SPACER];
+    let sizer_size = sizer.len();
+
+    let hash = hasher::hash_key("key");
+    let hash_size = hash.len();
+    let key_buf: &mut [u8] = &mut vec![0; hash_size];
+    let del_buf: &mut [u8] = &mut vec![0; 1];
+    let deleted_size = del_buf.len();
+
+    // iterate through the records in file and write the non-deleted ones to the tmp one
+    let mut nbytes = read(read_lock.as_fd(), key_buf)?;
+    while nbytes > 0 {
+        _ = read(read_lock.as_fd(), size_buf)?;
+        sizer.clone_from_slice(size_buf);
+        _ = read(read_lock.as_fd(), del_buf)?;
+        let val_buf: &mut [u8] = &mut vec![0; usize::from_ne_bytes(sizer)];
+        _ = read(read_lock.as_fd(), val_buf)?;
+        if del_buf == [0] {
+            // not deleted, so collect it in a new buffer, to write it to the tmp file
+            let buffer: &mut [u8] =
+                &mut vec![0; hash_size + sizer_size + deleted_size + val_buf.len()];
+            buffer[0..hash_size].copy_from_slice(&key_buf);
+            buffer[hash_size..hash_size + sizer_size].copy_from_slice(&sizer);
+            buffer[hash_size + sizer_size..hash_size + sizer_size + deleted_size]
+                .copy_from_slice(&del_buf);
+            buffer[hash_size + sizer_size + deleted_size..].copy_from_slice(&val_buf);
+            _ = write(tmp_lock.as_fd(), buffer)?;
+        }
+        nbytes = read(read_lock.as_fd(), key_buf)?;
+    }
+
+    renameat(
+        tmp_lock.as_fd(),
+        tmp_filepath.as_str(),
+        read_lock.as_fd(),
+        filepath.as_str(),
+    )?;
+
+    match read_lock.unlock() {
+        Ok(unlocked) => {
+            close(unlocked)?;
+            Ok(None)
+        }
+        Err((_, e)) => Err(e),
     }
 }

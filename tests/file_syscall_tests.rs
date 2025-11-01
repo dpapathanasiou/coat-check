@@ -1,4 +1,4 @@
-use coat_check::file_syscalls::{delete_key, read_key, write_key_val};
+use coat_check::file_syscalls::{compact, delete_key, read_key, write_key_val};
 use nix::errno::Errno;
 use std::thread;
 use std::time::Duration;
@@ -66,6 +66,7 @@ fn write_then_delete_key_works() {
         Err(_) => assert!(false),
     }
 }
+
 #[test]
 fn write_then_delete_key_multiple_time_produces_last_value() {
     let file_folder = common::generate_test_file(3);
@@ -198,6 +199,71 @@ fn lock_on_writes_blocks_reads_without_errors() {
                     None => false, // there may not be a match yet
                 },
                 Err(_) => false,
+            };
+        }
+    }
+}
+
+#[test]
+fn compaction_works() {
+    let file_folder = common::generate_test_file(6);
+
+    let keys = vec!["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+    let vals = vec![
+        "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez",
+    ];
+
+    let cases = keys.len();
+    for i in 0..cases {
+        let k = keys.get(i).unwrap();
+        let v = vals.get(i).unwrap().as_bytes();
+        match write_key_val(file_folder.clone(), k, v) {
+            Ok(bytes) => assert_ne!(bytes, 0), // as brand-new writes, these should all be > 0
+            Err(_) => assert!(false),
+        }
+        if i % 2 == 0 {
+            // delete the odd half, so that test file needs compaction
+            match delete_key(file_folder.clone(), k) {
+                Ok(bytes) => match bytes {
+                    Some(value_vector) => assert_eq!(value_vector, v), // successful delete returns the corresponding value, for reference
+                    None => assert!(false),
+                },
+                Err(_) => assert!(false),
+            }
+        }
+    }
+
+    // compact the test file
+    match compact(file_folder.clone()) {
+        Ok(bytes) => match bytes {
+            Some(_) => assert!(false),
+            None => assert!(true),
+        },
+        Err(_) => assert!(false),
+    }
+
+    // iterate through keys/vals and confirm only the even ones exist
+    for i in 0..cases {
+        let k = keys.get(i).unwrap();
+        let read_result = read_key(file_folder.clone(), k);
+        assert!(read_result.is_ok());
+        if i % 2 == 0 {
+            // expect these to be missing
+            match read_result {
+                Ok(bytes) => match bytes {
+                    Some(_) => assert!(false),
+                    None => assert!(true),
+                },
+                Err(_) => assert!(false),
+            };
+        } else {
+            // expect these to exist
+            match read_result {
+                Ok(bytes) => match bytes {
+                    Some(value_vector) => assert_eq!(value_vector, vals.get(i).unwrap().as_bytes()),
+                    None => assert!(false),
+                },
+                Err(_) => assert!(false),
             };
         }
     }
