@@ -5,6 +5,7 @@ use nix::fcntl::{Flock, FlockArg, OFlag, open, renameat};
 use nix::sys::stat::Mode;
 use nix::unistd::{Whence, close, lseek, read, write};
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+use std::path::PathBuf;
 
 const SPACER: usize = std::mem::size_of::<usize>();
 
@@ -243,8 +244,17 @@ pub fn compact(filepath: String) -> Result<Option<Vec<u8>>, Errno> {
         Err((_, e)) => return Err(e),
     };
 
+    // need to write the tmp file in the same folder, so that renameat can be atomic
+    let parent = match PathBuf::from(filepath.clone()).parent() {
+        Some(path) => match path.to_str() {
+            Some(p) => String::from(p),
+            None => String::from("/tmp"),
+        },
+        None => String::from("/tmp"),
+    };
+
     let tmp_filepath = format!(
-        "/tmp/compact-{}.coat-check",
+        "{parent}/compact-{}.coat-check",
         Utc::now().timestamp().to_string()
     );
 
@@ -295,6 +305,7 @@ pub fn compact(filepath: String) -> Result<Option<Vec<u8>>, Errno> {
         nbytes = read(read_lock.as_fd(), key_buf)?;
     }
 
+    // atomically replace the original file with the tmp one
     renameat(
         tmp_lock.as_fd(),
         tmp_filepath.as_str(),
@@ -302,6 +313,7 @@ pub fn compact(filepath: String) -> Result<Option<Vec<u8>>, Errno> {
         filepath.as_str(),
     )?;
 
+    // release the lock and close the fd
     match read_lock.unlock() {
         Ok(unlocked) => {
             close(unlocked)?;

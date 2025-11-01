@@ -193,12 +193,9 @@ fn lock_on_writes_blocks_reads_without_errors() {
         while !matched {
             let read_result = read_key(file_folder.clone(), key);
             assert!(read_result.is_ok());
-            matched = match read_result {
-                Ok(bytes) => match bytes {
-                    Some(value_vector) => value_vector == val,
-                    None => false, // there may not be a match yet
-                },
-                Err(_) => false,
+            matched = match read_result.unwrap() {
+                Some(value_vector) => value_vector == val,
+                None => false, // there may not be a match yet
             };
         }
     }
@@ -249,21 +246,15 @@ fn compaction_works() {
         assert!(read_result.is_ok());
         if i % 2 == 0 {
             // expect these to be missing
-            match read_result {
-                Ok(bytes) => match bytes {
-                    Some(_) => assert!(false),
-                    None => assert!(true),
-                },
-                Err(_) => assert!(false),
+            match read_result.unwrap() {
+                Some(_) => assert!(false),
+                None => assert!(true),
             };
         } else {
             // expect these to exist
-            match read_result {
-                Ok(bytes) => match bytes {
-                    Some(value_vector) => assert_eq!(value_vector, vals.get(i).unwrap().as_bytes()),
-                    None => assert!(false),
-                },
-                Err(_) => assert!(false),
+            match read_result.unwrap() {
+                Some(value_vector) => assert_eq!(value_vector, vals.get(i).unwrap().as_bytes()),
+                None => assert!(false),
             };
         }
     }
