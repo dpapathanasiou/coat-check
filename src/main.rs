@@ -1,6 +1,7 @@
 use coat_check::file_syscalls::{compact, delete_key, read_key, write_key_val};
 use coat_check::fork_syscalls::size;
 use coat_check::server::Server;
+use coat_check::signal_syscalls::register_compaction_sig_handler;
 use log::{error, info};
 use nix::errno::Errno;
 use std::env;
@@ -13,6 +14,12 @@ fn main() {
     // before: take the size of the date file, as a fork call to `wc`
     let f = file_folder.clone();
     size(f.clone());
+
+    // allow compaction to be requested by a signal (SIGUSR2)
+    match register_compaction_sig_handler() {
+        Ok(_) => info!("signal handler registered!"),
+        Err(e) => error!("signal handler register error -> {:#?}", e),
+    };
 
     let args: Vec<String> = env::args().collect();
     if args.len() == 2 && &args[1] == "server" {

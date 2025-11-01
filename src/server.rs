@@ -1,4 +1,5 @@
-use crate::file_syscalls::{delete_key, read_key, write_key_val};
+use crate::file_syscalls::{compact, delete_key, read_key, write_key_val};
+use crate::signal_syscalls::COMPACT_SIGNALED;
 use libc::{c_void, pthread_create, pthread_detach, pthread_t};
 use nix::errno::Errno;
 use nix::sys::socket::{
@@ -6,6 +7,7 @@ use nix::sys::socket::{
     listen, recv, send, socket,
 };
 use std::os::fd::{AsRawFd, RawFd};
+use std::sync::atomic::Ordering;
 use std::{mem, ptr};
 
 #[repr(C)]
@@ -171,36 +173,47 @@ impl Server {
     fn handle(&self, sockfd: RawFd) {
         let mut connection = accept(sockfd);
         while connection.is_ok() {
-            // Create a new pthread for each successful client connection
-            let args = ClientThreadArgs {
-                clientfd: connection.unwrap(),
-                filepath: self.filepath.clone(),
-            };
+            // Handle any pending compaction requests first
+            if COMPACT_SIGNALED.load(Ordering::Relaxed) {
+                println!("Compacting {:#?} -- please wait", self.filepath.clone());
+                match compact(self.filepath.clone()) {
+                    Ok(_) => println!("Compacting {:#?} -- completed", self.filepath.clone()),
+                    Err(e) => {
+                        println!("Compacting {:#?} -- error {:#?}", self.filepath.clone(), e)
+                    }
+                }
+            } else {
+                // Create a new pthread for each successful client connection
+                let args = ClientThreadArgs {
+                    clientfd: connection.unwrap(),
+                    filepath: self.filepath.clone(),
+                };
 
-            // Box the arguments to the client thread, so they do not go out of scope
-            let arg_ptr = Box::into_raw(Box::new(args));
+                // Box the arguments to the client thread, so they do not go out of scope
+                let arg_ptr = Box::into_raw(Box::new(args));
 
-            let mut thread_id: pthread_t = unsafe { mem::zeroed() };
-            let create_result = unsafe {
-                pthread_create(
-                    &mut thread_id,
-                    ptr::null(),
-                    handle_client,
-                    arg_ptr as *mut c_void,
-                )
-            };
+                let mut thread_id: pthread_t = unsafe { mem::zeroed() };
+                let create_result = unsafe {
+                    pthread_create(
+                        &mut thread_id,
+                        ptr::null(),
+                        handle_client,
+                        arg_ptr as *mut c_void,
+                    )
+                };
 
-            if create_result != 0 {
-                eprintln!("Error creating thread: {}", create_result);
+                if create_result != 0 {
+                    eprintln!("Error creating thread: {}", create_result);
+                }
+
+                // Let the newly-created thread run to completion
+                unsafe {
+                    pthread_detach(thread_id);
+                }
+
+                // Accept any new client connections
+                connection = accept(sockfd);
             }
-
-            // Let the newly-created thread run to completion
-            unsafe {
-                pthread_detach(thread_id);
-            }
-
-            // Accept any new client connections
-            connection = accept(sockfd);
         }
     }
 }

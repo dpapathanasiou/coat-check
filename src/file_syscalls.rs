@@ -1,4 +1,5 @@
 use crate::hasher;
+use crate::signal_syscalls::COMPACT_SIGNALED;
 use chrono::Utc;
 use nix::errno::Errno;
 use nix::fcntl::{Flock, FlockArg, OFlag, open, renameat};
@@ -6,6 +7,7 @@ use nix::sys::stat::Mode;
 use nix::unistd::{Whence, close, lseek, read, write};
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 
 const SPACER: usize = std::mem::size_of::<usize>();
 
@@ -312,6 +314,9 @@ pub fn compact(filepath: String) -> Result<Option<Vec<u8>>, Errno> {
         read_lock.as_fd(),
         filepath.as_str(),
     )?;
+
+    // reset the signal log
+    COMPACT_SIGNALED.store(false, Ordering::Relaxed);
 
     // release the lock and close the fd
     match read_lock.unlock() {

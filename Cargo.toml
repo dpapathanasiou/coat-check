@@ -1,12 +1,12 @@
 [package]
 name = "coat-check"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["Denis Papathanasiou <denis@papathanasiou.org>"]
 license = "MIT"
 
 [dependencies]
-nix = { version = "0.30.1", features = ["fs", "process", "net", "socket"] }
+nix = { version = "0.30.1", features = ["fs", "process", "net", "socket", "signal"] }
 log = "0.4.28"
 env_logger = "0.11.8"
 md-5 = "0.10.6"
